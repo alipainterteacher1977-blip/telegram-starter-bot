@@ -1,24 +1,90 @@
-// Your bot's behaviour. Add commands here; grammY's docs (grammy.dev) cover
-// keyboards, sessions, files, inline queries and everything else.
 
-import { InlineKeyboard } from "grammy"
+import { InlineKeyboard } from "grammy";
+
+const questions = [
+  {
+    q: "كم يساوي ٣ × ٢؟",
+    options: ["٩", "٨", "٦", "٤"],
+    answer: "٦"
+  },
+  {
+    q: "كم يساوي ٢٥ × ٤؟",
+    options: ["١٢٥", "١٠٠", "٧٥", "٥٠"],
+    answer: "١٠٠"
+  },
+  {
+    q: "ما مساحة مستطيل طوله ١٠ سم وعرضه ٥ سم؟",
+    options: ["١٥", "٥٠", "٣٠", "٢٥"],
+    answer: "٥٠"
+  }
+];
+
+const sessions = new Map();
 
 export function registerCommands(bot) {
-  bot.command("start", (ctx) =>
-    ctx.reply(`Hi ${ctx.from?.first_name ?? "there"}. I am alive and hosted on FadeHost. Send /help to see what I can do.`, {
-      reply_markup: new InlineKeyboard().text("Ping me", "ping"),
-    }),
-  )
+  bot.command("start", async (ctx) => {
+    sessions.set(ctx.from.id, { index: 0, score: 0 });
+    await ctx.reply(
+      "أهلاً بك في اختبار رياضيات السادس الابتدائي 🇮🇶\n\nاكتب /quiz لبدء الاختبار."
+    );
+  });
 
-  bot.command("help", (ctx) =>
-    ctx.reply(["Commands:", "/start  say hello", "/help   this list", "/ping   check I am awake", "/id     show chat and user ids", "", "Send me any text and I echo it back."].join("\n")),
-  )
+  bot.command("quiz", async (ctx) => {
+    sessions.set(ctx.from.id, { index: 0, score: 0 });
+    await sendQuestion(ctx);
+  });
 
-  bot.command("ping", (ctx) => ctx.reply("pong"))
+  bot.command("help", async (ctx) => {
+    await ctx.reply("لبدء الاختبار اكتب /quiz\nلإعادة الاختبار اكتب /quiz");
+  });
 
-  bot.command("id", (ctx) => ctx.reply(`Chat id: ${ctx.chat.id}\nYour id: ${ctx.from?.id ?? "unknown"}`))
+  async function sendQuestion(ctx) {
+    const session = sessions.get(ctx.from.id);
 
-  bot.callbackQuery("ping", (ctx) => ctx.answerCallbackQuery({ text: "pong" }))
+    if (!session || session.index >= questions.length) {
+      await ctx.reply(
+        `انتهى الاختبار ✅\nدرجتك: ${session?.score ?? 0} من ${questions.length}\n\nلإعادة الاختبار اكتب /quiz`
+      );
+      return;
+    }
 
-  bot.on("message:text", (ctx) => ctx.reply(ctx.message.text))
+    const question = questions[session.index];
+    const keyboard = new InlineKeyboard();
+
+    question.options.forEach((option, j) => {
+      keyboard.text(option, `answer_${session.index}_${j}`).row();
+    });
+
+    await ctx.reply(
+      `السؤال ${session.index + 1} من ${questions.length}\n\n${question.q}`,
+      { reply_markup: keyboard }
+    );
+  }
+
+  questions.forEach((question, i) => {
+    question.options.forEach((option, j) => {
+      bot.callbackQuery(`answer_${i}_${j}`, async (ctx) => {
+        const session = sessions.get(ctx.from.id);
+
+        if (!session || session.index !== i) {
+          await ctx.answerCallbackQuery({
+            text: "هذا السؤال انتهى. اكتب /quiz للبدء من جديد."
+          });
+          return;
+        }
+
+        await ctx.answerCallbackQuery();
+
+        if (option === question.answer) {
+          session.score++;
+          await ctx.reply("إجابة صحيحة ✅");
+        } else {
+          await ctx.reply(`إجابة غير صحيحة ❌\nالإجابة الصحيحة: ${question.answer}`);
+        }
+
+        session.index++;
+        await sendQuestion(ctx);
+      });
+    });
+  });
 }
